@@ -6,13 +6,8 @@ const API_BASE = 'http://127.0.0.1:8000/api';
 let sessionId = null;
 let isLoading = false;
 
-// Quick component chips data
-const QUICK_COMPONENTS = [
-    'Arduino Uno', 'Ultrasonic Sensor', 'Servo Motor', 'IR Sensor',
-    'DC Motor', 'Motor Driver', 'Bluetooth', 'Raspberry Pi',
-    'ESP8266', 'PIR Sensor', 'DHT11', 'Buzzer', 'Relay',
-    'LCD Display', 'Joystick', 'OLED', 'LED', 'GPS'
-];
+// Quick component chips data will be fetched from API
+let groupedComponents = {};
 
 // ============ INITIALIZATION ============
 
@@ -21,6 +16,7 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 async function initializeApp() {
+    await fetchComponents();
     renderQuickChips();
     addWelcomeMessage();
     setupTextareaAutoResize();
@@ -129,7 +125,7 @@ function renderBotResponse(response) {
     let content = '';
 
     // Build rich response based on type
-    if (response.type === 'recommendation' && response.projects && response.projects.length > 0) {
+    if (response.type === 'recommendation') {
         // Component tags
         if (response.components && response.components.length > 0) {
             content += '<div class="component-tags">';
@@ -139,42 +135,29 @@ function renderBotResponse(response) {
             content += '</div>';
         }
 
-        content += `<p style="margin: 10px 0; color: var(--text-secondary);">Based on your components, here are my top project suggestions:</p>`;
+        // Ready to build section
+        if (response.projects && response.projects.length > 0) {
+            content += `<p style="margin: 10px 0; color: var(--success); font-weight: 600;">✅ Ready to Build:</p>`;
+            content += '<div class="project-cards">';
+            response.projects.forEach((project, index) => {
+                content += renderProjectCard(project, index + 1, false);
+            });
+            content += '</div>';
+        }
 
-        // Project cards
-        content += '<div class="project-cards">';
-        response.projects.forEach((project, index) => {
-            const diffClass = `badge-${project.difficulty}`;
-            const matchedComps = project.matched_components || [];
+        // Suggestions/Next Steps section
+        if (response.suggested_projects && response.suggested_projects.length > 0) {
+            content += `<p style="margin: 20px 0 10px; color: var(--accent-secondary); font-weight: 600;">🚀 Next Steps (If you get a few more parts):</p>`;
+            content += '<div class="project-cards">';
+            response.suggested_projects.forEach((project, index) => {
+                content += renderProjectCard(project, index + 1, true);
+            });
+            content += '</div>';
+        }
 
-            content += `
-                <div class="project-card">
-                    <div class="project-card-header">
-                        <span class="project-card-title">${index + 1}. ${escapeHtml(project.title)}</span>
-                        <div class="project-card-badges">
-                            <span class="badge badge-score">${project.score}% Match</span>
-                            <span class="badge ${diffClass}">${project.difficulty}</span>
-                        </div>
-                    </div>
-                    <p class="project-card-desc">${escapeHtml(project.description)}</p>
-                    <div class="project-card-components">
-                        ${project.components.map(c => {
-                            const isMatched = matchedComps.some(mc =>
-                                c.toLowerCase().includes(mc.toLowerCase()) ||
-                                mc.toLowerCase().includes(c.toLowerCase())
-                            );
-                            return `<span class="project-comp-chip ${isMatched ? 'matched' : ''}">${escapeHtml(c)}</span>`;
-                        }).join('')}
-                    </div>
-                    ${project.instructions ? `
-                        <div class="project-card-tips">
-                            <strong>Build Tips:</strong> ${escapeHtml(project.instructions)}
-                        </div>
-                    ` : ''}
-                </div>
-            `;
-        });
-        content += '</div>';
+        if (!response.projects?.length && !response.suggested_projects?.length) {
+            content += `<p style="margin: 10px 0;">${formatMarkdown(response.message)}</p>`;
+        }
 
         content += `<p style="margin-top: 14px; font-size: 13px; color: var(--text-muted);">Want more ideas? Add or change components and ask again!</p>`;
     } else {
@@ -259,9 +242,106 @@ function hideTyping() {
 
 function renderQuickChips() {
     const container = document.getElementById('quickChips');
-    container.innerHTML = QUICK_COMPONENTS.map(comp =>
-        `<button class="quick-chip" onclick="addChipToInput('${comp}')">${comp}</button>`
-    ).join('');
+    if (!Object.keys(groupedComponents).length) {
+        container.innerHTML = '<p style="color: var(--text-muted); font-size: 11px;">Loading components...</p>';
+        return;
+    }
+
+    let html = '';
+    const categoryNames = {
+        'microcontroller': 'Microcontrollers',
+        'sensor': 'Sensors',
+        'actuator': 'Actuators',
+        'module': 'Modules',
+        'display': 'Displays',
+        'power': 'Power',
+        'other': 'Others'
+    };
+
+    // Define order
+    const order = ['microcontroller', 'sensor', 'actuator', 'module', 'display', 'power', 'other'];
+
+    order.forEach(cat => {
+        if (groupedComponents[cat] && groupedComponents[cat].length > 0) {
+            html += `<div class="sidebar-category-header">${categoryNames[cat] || cat}</div>`;
+            html += '<div class="quick-chips">';
+            groupedComponents[cat].forEach(comp => {
+                html += `<button class="quick-chip" onclick="addChipToInput('${comp.name}')">${comp.name}</button>`;
+            });
+            html += '</div>';
+        }
+    });
+
+    container.innerHTML = html;
+}
+
+async function fetchComponents() {
+    try {
+        const response = await fetch(`${API_BASE}/components/`);
+        if (response.ok) {
+            const components = await response.json();
+            
+            // Group by category
+            groupedComponents = components.reduce((acc, comp) => {
+                const cat = comp.category || 'other';
+                if (!acc[cat]) acc[cat] = [];
+                acc[cat].push(comp);
+                return acc;
+            }, {});
+        }
+    } catch (error) {
+        console.error('Error fetching components:', error);
+    }
+}
+
+function renderProjectCard(project, index, isSuggestion) {
+    const diffClass = `badge-${project.difficulty}`;
+    const matchedComps = project.matched_components || [];
+    const missingComps = project.missing_components || [];
+
+    return `
+        <div class="project-card ${isSuggestion ? 'suggestion' : ''}">
+            <div class="project-card-header">
+                <span class="project-card-title">${index}. ${escapeHtml(project.title)}</span>
+                <div class="project-card-badges">
+                    <span class="badge badge-score">${project.score}% Match</span>
+                    <span class="badge ${diffClass}">${project.difficulty}</span>
+                </div>
+            </div>
+            <p class="project-card-desc">${escapeHtml(project.description)}</p>
+            
+            <div class="project-card-components">
+                ${project.components.map(c => {
+                    const isMatched = matchedComps.some(mc =>
+                        c.toLowerCase().includes(mc.toLowerCase()) ||
+                        mc.toLowerCase().includes(c.toLowerCase())
+                    );
+                    const isMissing = missingComps.some(mc =>
+                        c.toLowerCase().includes(mc.toLowerCase()) ||
+                        mc.toLowerCase().includes(c.toLowerCase())
+                    );
+                    
+                    let chipClass = '';
+                    if (isMatched) chipClass = 'matched';
+                    else if (isMissing) chipClass = 'missing';
+
+                    return `<span class="project-comp-chip ${chipClass}">${escapeHtml(c)}</span>`;
+                }).join('')}
+            </div>
+            
+            ${isSuggestion && missingComps.length > 0 ? `
+                <div class="missing-alert">
+                    ⚠️ Missing: ${missingComps.map(m => `<strong>${escapeHtml(m)}</strong>`).join(', ')}
+                </div>
+            ` : ''}
+
+            ${project.instructions ? `
+                <div class="project-card-tips">
+                    <strong>Build Tips:</strong> ${escapeHtml(project.instructions)}
+                </div>
+            ` : ''}
+        </div>
+    `;
 }
 
 function addChipToInput(component) {

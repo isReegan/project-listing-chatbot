@@ -42,7 +42,7 @@ class ChatView(APIView):
         # Process with ML engine
         intent = detect_intent(user_message)
         components = []
-        recommendations = []
+        recommendations = {'ready': [], 'suggestions': []}
 
         if intent == 'project_request':
             components = extract_components(user_message)
@@ -73,7 +73,8 @@ class ChatView(APIView):
             bot_msg.matched_components.set(matched_comp_objs)
 
         if recommendations:
-            project_ids = [r[0].id for r in recommendations]
+            project_ids = [item['project'].id for item in recommendations.get('ready', [])]
+            project_ids += [item['project'].id for item in recommendations.get('suggestions', [])]
             bot_msg.suggested_projects.set(project_ids)
 
         return Response({

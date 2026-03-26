@@ -199,6 +199,25 @@ html, body {
 }
 
 /* Quick Chips */
+.sidebar-category-header {
+    font-size: 10px;
+    text-transform: uppercase;
+    color: var(--accent-secondary);
+    margin: 12px 0 8px;
+    font-weight: 700;
+    letter-spacing: 0.5px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.sidebar-category-header::after {
+    content: '';
+    flex: 1;
+    height: 1px;
+    background: var(--border);
+}
+
 .quick-chips {
     display: flex;
     flex-wrap: wrap;
@@ -644,6 +663,27 @@ html, body {
     background: rgba(16, 185, 129, 0.15);
     color: var(--success);
     border: 1px solid rgba(16, 185, 129, 0.2);
+}
+
+.project-comp-chip.missing {
+    background: rgba(239, 68, 68, 0.1);
+    color: var(--danger);
+    border: 1px dashed rgba(239, 68, 68, 0.3);
+}
+
+.missing-alert {
+    margin-top: 10px;
+    padding: 8px 12px;
+    background: rgba(245, 158, 11, 0.1);
+    border-radius: var(--radius-sm);
+    border: 1px solid rgba(245, 158, 11, 0.2);
+    font-size: 11px;
+    color: var(--warning);
+}
+
+.missing-alert strong {
+    color: var(--warning);
+    font-weight: 700;
 }
 
 .project-card-tips {

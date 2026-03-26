@@ -224,58 +224,66 @@ def extract_components(message):
 
 def get_project_recommendations(user_components, all_projects):
     """
-    Use TF-IDF + cosine similarity to find the best matching projects.
-
-    Args:
-        user_components: List of standardized component names from user input
-        all_projects: QuerySet of Project objects
+    Find projects that are "Ready to Build" or "Nearly There".
 
     Returns:
-        List of (project, score, matched_components) tuples, sorted by relevance
+        Dict with 'ready' and 'suggestions' lists.
     """
     if not user_components or not all_projects:
-        return []
+        return {'ready': [], 'suggestions': []}
 
-    recommendations = []
+    ready_to_build = []
+    missing_comp_suggestions = []
+
+    user_comp_lower = [c.lower() for c in user_components]
 
     for project in all_projects:
         project_components = [pc.component.name.lower() for pc in project.projectcomponent_set.all()]
-        project_keywords = []
-        for pc in project.projectcomponent_set.all():
-            project_keywords.extend(pc.component.get_keywords_list())
-
-        # Calculate match score
-        user_comp_lower = [c.lower() for c in user_components]
-
-        # Direct component matching
+        
+        # Calculate matches
         matched = []
-        for uc in user_comp_lower:
-            for pc in project_components:
+        missing = []
+        
+        for pc in project_components:
+            is_matched = False
+            for uc in user_comp_lower:
                 if uc in pc or pc in uc:
                     matched.append(pc)
+                    is_matched = True
                     break
+            if not is_matched:
+                missing.append(pc)
 
-        if not matched:
-            # Try keyword matching as fallback
-            for uc in user_comp_lower:
-                uc_words = set(uc.split())
-                for kw in project_keywords:
-                    if kw in uc or uc in kw or uc_words & set(kw.split()):
-                        for pc in project_components:
-                            matched.append(pc)
-                        break
+        match_count = len(set(matched))
+        total_required = len(set(project_components))
+        
+        # Scoring logic
+        match_ratio = match_count / total_required
+        coverage_bonus = match_count / max(len(user_comp_lower), 1)
+        score = (match_ratio * 0.7) + (coverage_bonus * 0.3)
+        score_pct = round(score * 100, 1)
 
-        if matched:
-            # Score = percentage of project components that were matched
-            match_ratio = len(set(matched)) / len(project_components)
-            # Bonus for having more of the required components
-            coverage_bonus = len(set(matched)) / max(len(user_comp_lower), 1)
-            score = (match_ratio * 0.7) + (coverage_bonus * 0.3)
-            recommendations.append((project, round(score * 100, 1), list(set(matched))))
+        project_data = {
+            'project': project,
+            'score': score_pct,
+            'matched': list(set(matched)),
+            'missing': list(set(missing))
+        }
 
-    # Sort by score descending
-    recommendations.sort(key=lambda x: x[1], reverse=True)
-    return recommendations[:5]  # Top 5 recommendations
+        # Categorize
+        if len(missing) == 0:
+            ready_to_build.append(project_data)
+        elif len(missing) <= 2:
+            missing_comp_suggestions.append(project_data)
+
+    # Sort and limit
+    ready_to_build.sort(key=lambda x: x['score'], reverse=True)
+    missing_comp_suggestions.sort(key=lambda x: x['score'], reverse=True)
+
+    return {
+        'ready': ready_to_build[:3],
+        'suggestions': missing_comp_suggestions[:3]
+    }
 
 
 def generate_tfidf_recommendations(user_text, all_projects):
@@ -378,46 +386,65 @@ def format_bot_response(intent, components=None, recommendations=None, tfidf_res
         comp_tags = ', '.join([f"**{c.title()}**" for c in components])
         msg = f"🔍 I detected these components: {comp_tags}\n\n"
 
-        projects_data = []
+        projects_ready = []
+        projects_suggested = []
 
-        if recommendations:
-            msg += "🚀 **Here are my top project suggestions for you:**\n\n"
-            for i, (project, score, matched) in enumerate(recommendations, 1):
-                difficulty_emoji = {'beginner': '🟢', 'intermediate': '🟡', 'advanced': '🔴'}
-                emoji = difficulty_emoji.get(project.difficulty, '⚪')
+        if recommendations and (recommendations['ready'] or recommendations['suggestions']):
+            # 1. Projects ready to build
+            if recommendations['ready']:
+                msg += "✅ **You can build these right now!**\n\n"
+                for i, item in enumerate(recommendations['ready'], 1):
+                    project = item['project']
+                    difficulty_emoji = {'beginner': '🟢', 'intermediate': '🟡', 'advanced': '🔴'}
+                    emoji = difficulty_emoji.get(project.difficulty, '⚪')
+                    all_comps = [pc.component.name for pc in project.projectcomponent_set.all()]
 
-                all_comps = [pc.component.name for pc in project.projectcomponent_set.all()]
+                    msg += f"### {i}. {project.title} {emoji}\n"
+                    msg += f"{project.description}\n\n"
+                    
+                    projects_ready.append({
+                        'id': project.id,
+                        'title': project.title,
+                        'description': project.description,
+                        'difficulty': project.difficulty,
+                        'score': item['score'],
+                        'components': all_comps,
+                        'matched_components': item['matched'],
+                        'missing_components': [],
+                    })
 
-                msg += f"---\n\n"
-                msg += f"### {i}. {project.title} {emoji}\n"
-                msg += f"**Match Score:** {score}% | **Difficulty:** {project.difficulty.title()}\n\n"
-                msg += f"{project.description}\n\n"
-                msg += f"**Components needed:** {', '.join(all_comps)}\n\n"
-
-                if project.instructions:
-                    msg += f"💡 **Tips:** {project.instructions}\n\n"
-
-                projects_data.append({
-                    'id': project.id,
-                    'title': project.title,
-                    'description': project.description,
-                    'difficulty': project.difficulty,
-                    'score': score,
-                    'components': all_comps,
-                    'instructions': project.instructions,
-                    'matched_components': matched,
-                })
+            # 2. Next Step suggestions
+            if recommendations['suggestions']:
+                msg += "---\n\n"
+                msg += "🚀 **Next Step: If you get these components, you can also build:**\n\n"
+                for i, item in enumerate(recommendations['suggestions'], 1):
+                    project = item['project']
+                    missing_str = ', '.join([f"**{m.title()}**" for m in item['missing']])
+                    
+                    msg += f"• **{project.title}**: Just add {missing_str}!\n"
+                    
+                    projects_suggested.append({
+                        'id': project.id,
+                        'title': project.title,
+                        'description': project.description,
+                        'difficulty': project.difficulty,
+                        'score': item['score'],
+                        'components': [pc.component.name for pc in project.projectcomponent_set.all()],
+                        'matched_components': item['matched'],
+                        'missing_components': item['missing'],
+                    })
 
             msg += "\n💡 *Want more ideas? Add or remove components and ask again!*"
         else:
-            msg += ("😅 I couldn't find a perfect project match for that exact combination, "
-                    "but try adding more components or different ones!\n\n"
+            msg += ("😅 I couldn't find a project match for that combination, "
+                    "but try adding more components!\n\n"
                     "Type **help** to see all components I know about.")
 
         return {
             'message': msg,
             'components': components,
-            'projects': projects_data,
+            'projects': projects_ready,
+            'suggested_projects': projects_suggested,
             'type': 'recommendation'
         }
 
