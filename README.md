@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # RoboHelper: AI-Powered Robotics Project Assistant
 
 RoboHelper is a full-stack web application designed to help makers, students, and hobbyists discover robotics project ideas based on the components they have on hand. It features a modern chatbot interface where users can list their components (e.g., "I have an Arduino Uno, ultrasonic sensor, and servo motor") and receive intelligent, ML-driven project recommendations.
@@ -5,6 +6,15 @@ RoboHelper is a full-stack web application designed to help makers, students, an
 ---
 
 ## 🏗️ Architecture Overview
+=======
+# ProjectHelper: AI-Powered Robotics Project Assistant
+
+ProjectHelper is a full-stack web application designed to help makers, students, and hobbyists discover robotics project ideas based on the components they have on hand. It features a modern chatbot interface where users can list their components (e.g., "I have an Arduino Uno, ultrasonic sensor, and servo motor") and receive intelligent, ML-driven project recommendations.
+
+---
+
+##  Architecture Overview
+>>>>>>> 578b84577fee8978304a29d9ab8db4beedb60b64
 
 The project follows a decoupled architecture using a RESTful API:
 
