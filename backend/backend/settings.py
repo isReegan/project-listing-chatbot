@@ -7,9 +7,9 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 
 SECRET_KEY = 'django-insecure-@9l(z0k)+a7axs8euu%@2d3-dqy3ry+*39em1hjkf=y9xsh50s'
 
-DEBUG = True
+DEBUG = False  # 🔥 changed for production
 
-ALLOWED_HOSTS = ['*']
+ALLOWED_HOSTS = ['*']  # already correct
 
 INSTALLED_APPS = [
     'django.contrib.admin',
@@ -34,7 +34,7 @@ MIDDLEWARE = [
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
 ]
 
-# Allow React dev server
+# Allow all origins (for now)
 CORS_ALLOW_ALL_ORIGINS = True
 
 ROOT_URLCONF = 'backend.urls'
@@ -75,7 +75,10 @@ TIME_ZONE = 'UTC'
 USE_I18N = True
 USE_TZ = True
 
+# 🔥 STATIC FILES CONFIG (IMPORTANT)
 STATIC_URL = 'static/'
+STATIC_ROOT = BASE_DIR / 'staticfiles'  # 👈 added
+
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 REST_FRAMEWORK = {
